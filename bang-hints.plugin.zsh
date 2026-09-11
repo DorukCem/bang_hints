@@ -6,6 +6,22 @@
 
 autoload -Uz add-zle-hook-widget
 
+# Tracks whether a hint is currently displayed, so we only call `zle -M ''`
+# when there is actually something to clear. Calling `zle -M ''`
+# unconditionally reserves the message line (visible as a stray space).
+typeset -g _bang_hints_shown=0
+
+_bang_hints_show() {
+    _bang_hints_shown=1
+    zle -M "$1"
+}
+
+_bang_hints_clear() {
+    (( _bang_hints_shown )) || return 0
+    _bang_hints_shown=0
+    zle -M ''
+}
+
 # Helper function to draw a clean ASCII/Unicode box around multiple lines of text
 _bang_hints_draw_box() {
     local lines=("$@")
@@ -43,13 +59,13 @@ _bang_hints_redraw_hook() {
     
     local bang_idx=${current_word[(i)!]}
     if (( bang_idx == 0 || bang_idx > ${#current_word} )); then
-        zle -M ''
+        _bang_hints_clear
         return
     fi
     
     local prefix=${current_word[1,bang_idx-1]}
     if [[ "$prefix" == *\\ ]]; then
-        zle -M ''
+        _bang_hints_clear
         return
     fi
 
@@ -64,7 +80,7 @@ _bang_hints_redraw_hook() {
         ev_hint="search closed"
         rem="${match[3]}"
     elif [[ "$rem" == (#b)(!\?*) ]]; then
-        zle -M "$(_bang_hints_draw_box "Matches command containing this text" "Close search with ?")"
+        _bang_hints_show "$(_bang_hints_draw_box "Matches command containing this text" "Close search with ?")"
         return
     elif [[ "$rem" == (#b)(![a-zA-Z0-9_-]##)(*) ]]; then
         ev_hint="Matches most recent command starting with '${match[1]#!}'"
@@ -86,11 +102,11 @@ _bang_hints_redraw_hook() {
         esac
         rem="${match[2]}"
     elif [[ "$rem" == "!"- ]]; then
-        zle -M "$(_bang_hints_draw_box "Pending: !-n" "Type a digit → n commands ago")"
+        _bang_hints_show "$(_bang_hints_draw_box "Pending: !-n" "Type a digit → n commands ago")"
         return
     elif [[ "$rem" == "!" ]]; then
         # Multiline base menu
-        zle -M "$(_bang_hints_draw_box \
+        _bang_hints_show "$(_bang_hints_draw_box \
             "History expansion" "" \
             "!!     previous command" \
             "!$     last argument" \
@@ -102,7 +118,7 @@ _bang_hints_redraw_hook() {
         return
     else
         # Invalid event designator
-        zle -M ""
+        _bang_hints_clear
         return
     fi
     
@@ -113,7 +129,7 @@ _bang_hints_redraw_hook() {
     while [[ -n "$rem" ]]; do
         # Exact match for trailing colon -> show multiline menu
         if [[ "$rem" == ":" ]]; then
-            zle -M "$(_bang_hints_draw_box \
+            _bang_hints_show "$(_bang_hints_draw_box \
                 "Modifiers & Designators" "" \
                 ":0-9   nth argument" \
                 ":^ $ * first/last/all args" \
@@ -138,7 +154,7 @@ _bang_hints_redraw_hook() {
                 esac
                 continue
             else
-                zle -M ""
+                _bang_hints_clear
                 return
             fi
         fi
@@ -150,7 +166,7 @@ _bang_hints_redraw_hook() {
             
             # If nothing follows :s, wait for the delimiter
             if [[ -z "$sub_rem" ]]; then
-                zle -M "$(_bang_hints_draw_box "Substitute" "Next character sets your delimiter")"
+                _bang_hints_show "$(_bang_hints_draw_box "Substitute" "Next character sets your delimiter")"
                 return
             fi
             
@@ -176,17 +192,17 @@ _bang_hints_redraw_hook() {
             
             # Evaluate substitute modifier state
             if (( delim_count == 0 )); then
-                zle -M "$(_bang_hints_draw_box "Typing pattern to match" "Ends at ${delim}")"
+                _bang_hints_show "$(_bang_hints_draw_box "Typing pattern to match" "Ends at ${delim}")"
                 return
             elif (( delim_count == 1 )); then
-                zle -M "$(_bang_hints_draw_box "Typing replacement" "Ends at ${delim}")"
+                _bang_hints_show "$(_bang_hints_draw_box "Typing replacement" "Ends at ${delim}")"
                 return
             elif (( delim_count == 2 )); then
                 # Slice off the completed substitute block and continue parsing
                 rem="${rest_sub[cut_idx+1,-1]}"
                 mod_hint="substitution complete"
             else
-                zle -M ""
+                _bang_hints_clear
                 return
             fi
             
@@ -221,7 +237,7 @@ _bang_hints_redraw_hook() {
             
         else
             # Dead state (invalid modifier)
-            zle -M ""
+            _bang_hints_clear
             return
         fi
     done
@@ -241,7 +257,7 @@ _bang_hints_redraw_hook() {
             lines=("$ev_hint" "" "[ : for modifiers, Space/Enter to use ]")
         fi
         
-        zle -M "$(_bang_hints_draw_box "${lines[@]}")"
+        _bang_hints_show "$(_bang_hints_draw_box "${lines[@]}")"
     fi
 }
 
