@@ -9,14 +9,17 @@ autoload -Uz add-zle-hook-widget
 # Tracks whether a hint is currently displayed, so we only call `zle -M ''`
 # when there is actually something to clear. Calling `zle -M ''`
 # unconditionally reserves the message line (visible as a stray space).
-typeset -g _bang_hints_shown=0
+# Preserve across re-source so a visible hint can still be cleared.
+(( ${+_bang_hints_shown} )) || typeset -g _bang_hints_shown=0
 
 _bang_hints_show() {
+    emulate -L zsh
     _bang_hints_shown=1
     zle -M "$1"
 }
 
 _bang_hints_clear() {
+    emulate -L zsh
     (( _bang_hints_shown )) || return 0
     _bang_hints_shown=0
     zle -M ''
@@ -24,6 +27,7 @@ _bang_hints_clear() {
 
 # Helper function to draw a clean ASCII/Unicode box around multiple lines of text
 _bang_hints_draw_box() {
+    emulate -L zsh
     local lines=("$@")
     local max_len=0
     local line
@@ -46,16 +50,25 @@ _bang_hints_draw_box() {
     
     out+="   └${border}┘"
     
-    # Print raw, avoiding any shell escape interpretations
-    print -r -- "$out"
+    # Print raw, avoiding any shell escape interpretations.
+    # builtin: immune to a user `alias print=...` defined before sourcing.
+    builtin print -r -- "$out"
 }
 
 _bang_hints_redraw_hook() {
+    emulate -L zsh
     # extendedglob is required for (#b) backreference matching
-    setopt localoptions extendedglob
+    setopt extendedglob
+    # Don't clobber a caller's $match (e.g. completion code interrupted by redraw)
+    local -a match mbegin mend
+    local MATCH MBEGIN MEND
 
-    # 1. Isolate the current word being typed.
-    local current_word="${LBUFFER##*[ $'\t'|<>&;]}"
+    # 1. Isolate the current word being typed, including the part after
+    # the cursor (RBUFFER) up to the next separator, so mid-line cursor
+    # positions describe the full word (e.g. LBUFFER="!!" RBUFFER="foo").
+    local _bh_after="${RBUFFER:-}"
+    _bh_after="${_bh_after%%[ $'\t'|<>&;]*}"
+    local current_word="${LBUFFER##*[ $'\t'|<>&;]}${_bh_after}"
     
     local bang_idx=${current_word[(i)!]}
     if (( bang_idx == 0 || bang_idx > ${#current_word} )); then
@@ -265,5 +278,10 @@ _bang_hints_redraw_hook() {
     fi
 }
 
-# Bind the hook globally
-add-zle-hook-widget line-pre-redraw _bang_hints_redraw_hook
+# Bind the hook globally (interactive shells only, so non-interactive
+# `source` stays silent with status 0). add-zle-hook-widget dedupes,
+# so re-sourcing is safe.
+if [[ -o interactive ]]; then
+    add-zle-hook-widget line-pre-redraw _bang_hints_redraw_hook 2>/dev/null || true
+fi
+: # keep source exit status 0 when the hook was skipped
