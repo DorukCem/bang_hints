@@ -82,16 +82,6 @@ _bang_hints_redraw_hook() {
     elif [[ "$rem" == (#b)(!\?*) ]]; then
         _bang_hints_show "$(_bang_hints_draw_box "Matches command containing this text" "Close search with ?")"
         return
-    elif [[ "$rem" == (#b)(![a-zA-Z0-9_-]##)(*) ]]; then
-        ev_hint="Matches most recent command starting with '${match[1]#!}'"
-        rem="${match[2]}"
-        is_free_text=1
-    elif [[ "$rem" == (#b)(!-[0-9]##)(*) ]]; then
-        ev_hint="${match[1]} → ${match[1]#!-} commands ago"
-        rem="${match[2]}"
-    elif [[ "$rem" == (#b)(![0-9]##)(*) ]]; then
-        ev_hint="${match[1]} → command #${match[1]#!}"
-        rem="${match[2]}"
     elif [[ "$rem" == (#b)(![\!\$\*#\^])(*) ]]; then
         case "${match[1]}" in
             "!!") ev_hint="!! → previous command" ;;
@@ -101,9 +91,19 @@ _bang_hints_redraw_hook() {
             "!#") ev_hint="!# → current command line typed so far" ;;
         esac
         rem="${match[2]}"
+    elif [[ "$rem" == (#b)(!-[0-9]##)(*) ]]; then
+        ev_hint="${match[1]} → ${match[1]#!-} commands ago"
+        rem="${match[2]}"
     elif [[ "$rem" == "!"- ]]; then
         _bang_hints_show "$(_bang_hints_draw_box "Pending: !-n" "Type a digit → n commands ago")"
         return
+    elif [[ "$rem" == !-* ]]; then
+        # !- followed by non-digit (e.g. !-n, !-foo) is invalid, not !foo
+        _bang_hints_clear
+        return
+    elif [[ "$rem" == (#b)(![0-9]##)(*) ]]; then
+        ev_hint="${match[1]} → command #${match[1]#!}"
+        rem="${match[2]}"
     elif [[ "$rem" == "!" ]]; then
         # Multiline base menu
         _bang_hints_show "$(_bang_hints_draw_box \
@@ -116,6 +116,10 @@ _bang_hints_redraw_hook() {
             "!foo   last command: foo" \
             "!?foo  command containing")"
         return
+    elif [[ "$rem" == (#b)(![a-zA-Z0-9_-]##)(*) ]]; then
+        ev_hint="Matches most recent command starting with '${match[1]#!}'"
+        rem="${match[2]}"
+        is_free_text=1
     else
         # Invalid event designator
         _bang_hints_clear
@@ -143,7 +147,7 @@ _bang_hints_redraw_hook() {
         
         # Word designators that omit the colon (e.g., !!*)
         if [[ "$rem" != :* ]]; then
-            if [[ "$rem" == (#b)([\$\*%\^])(.*) ]]; then
+            if [[ "$rem" == (#b)([\$\*%\^])(*) ]]; then
                 local m="${match[1]}"
                 rem="${match[2]}"
                 case "$m" in
@@ -160,7 +164,7 @@ _bang_hints_redraw_hook() {
         fi
         
         # Now rem MUST start with a colon
-        if [[ "$rem" == (#b)(:s|:gs)(.*) ]]; then
+        if [[ "$rem" == (#b)(:s|:gs)(*) ]]; then
             local mod="${match[1]}"
             local sub_rem="${match[2]}"
             
@@ -206,12 +210,12 @@ _bang_hints_redraw_hook() {
                 return
             fi
             
-        elif [[ "$rem" == (#b)(:[0-9]##-[0-9]##|:[0-9]##\*|:[0-9]##-|:[0-9]##)(.*) ]]; then
+        elif [[ "$rem" == (#b)(:[0-9]##-[0-9]##|:[0-9]##\*|:[0-9]##-|:[0-9]##)(*) ]]; then
             local m="${match[1]}"
             rem="${match[2]}"
             mod_hint="word designator ${m#:} selected"
             
-        elif [[ "$rem" == (#b)(:[\$\*%\^])(.*) ]]; then
+        elif [[ "$rem" == (#b)(:[\$\*%\^])(*) ]]; then
             local m="${match[1]}"
             rem="${match[2]}"
             case "$m" in
@@ -221,7 +225,7 @@ _bang_hints_redraw_hook() {
                 :%) mod_hint="matched word selected" ;;
             esac
             
-        elif [[ "$rem" == (#b)(:[phtreqxc\&g])(.*) ]]; then
+        elif [[ "$rem" == (#b)(:[phtreqxc\&g])(*) ]]; then
             local m="${match[1]}"
             rem="${match[2]}"
             case "$m" in
