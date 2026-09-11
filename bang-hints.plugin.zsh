@@ -209,8 +209,10 @@ Next character sets your delimiter"
             local delim="${sub_rem[1]}"
             local rest_sub="${sub_rem[2,-1]}"
             
-            # Safely count unescaped delimiters
+            # Safely count unescaped delimiters (tracking first too,
+            # so pattern/replacement can be displayed as 'foo' → 'bar')
             local delim_count=0
+            local first_idx=0
             local cut_idx=0
             local i
             for (( i=1; i<=${#rest_sub}; i++ )); do
@@ -218,7 +220,9 @@ Next character sets your delimiter"
                     # Check if the delimiter is escaped (e.g., \/)
                     if [[ $i -eq 1 || "${rest_sub[i-1]}" != '\' ]]; then
                         (( delim_count++ ))
-                        if (( delim_count == 2 )); then
+                        if (( delim_count == 1 )); then
+                            first_idx=$i
+                        elif (( delim_count == 2 )); then
                             cut_idx=$i
                             break
                         fi
@@ -228,17 +232,29 @@ Next character sets your delimiter"
             
             # Evaluate substitute modifier state
             if (( delim_count == 0 )); then
-                builtin print -r -- "Typing pattern to match
+                builtin print -r -- "'${rest_sub}' → ?
 Ends at ${delim}"
                 return 0
             elif (( delim_count == 1 )); then
-                builtin print -r -- "Typing replacement
+                local _bh_pat="" _bh_rep=""
+                (( first_idx > 1 )) && _bh_pat="${rest_sub[1,first_idx-1]}"
+                _bh_rep="${rest_sub[first_idx+1,-1]}"
+                builtin print -r -- "'${_bh_pat}' → '${_bh_rep}'
 Ends at ${delim}"
                 return 0
             elif (( delim_count == 2 )); then
                 # Slice off the completed substitute block and continue parsing
                 rem="${rest_sub[cut_idx+1,-1]}"
-                mod_hint="substitution complete"
+                local _bh_pat="" _bh_rep=""
+                (( first_idx > 1 )) && _bh_pat="${rest_sub[1,first_idx-1]}"
+                if (( cut_idx > first_idx + 1 )); then
+                    _bh_rep="${rest_sub[first_idx+1,cut_idx-1]}"
+                fi
+                if [[ "$mod" == ":gs" ]]; then
+                    mod_hint="globally: '${_bh_pat}' → '${_bh_rep}'"
+                else
+                    mod_hint="'${_bh_pat}' → '${_bh_rep}'"
+                fi
             else
                 return 1
             fi
