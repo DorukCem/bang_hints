@@ -25,10 +25,24 @@ _bang_hints_clear() {
     zle -M ''
 }
 
-# Helper function to draw a clean ASCII/Unicode box around multiple lines of text
+# Helper function to draw a clean ASCII/Unicode box around multiple lines of text.
+# Long lines (e.g. a huge !foo) are truncated with … so the box never
+# exceeds the terminal width.
 _bang_hints_draw_box() {
     emulate -L zsh
-    local lines=("$@")
+    local term_w=${COLUMNS:-80}
+    (( term_w > 0 )) 2>/dev/null || term_w=80
+    local max_text=$(( term_w - 10 ))
+    (( max_text < 20 )) && max_text=20
+    local -a lines=()
+    local t
+    for t in "$@"; do
+        if (( ${#t} > max_text )); then
+            lines+=("${t[1,max_text-1]}…")
+        else
+            lines+=("$t")
+        fi
+    done
     local max_len=0
     local line
     
