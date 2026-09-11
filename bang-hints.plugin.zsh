@@ -69,7 +69,12 @@ _bang_hints_draw_box() {
     builtin print -r -- "$out"
 }
 
-_bang_hints_redraw_hook() {
+# Pure resolver: the testable pipeline.
+# Usage: _bang_hints_resolve "$lbuffer" "$rbuffer"
+# Prints the inner hint lines (\n-joined, NO box/border) to stdout,
+# exits 0 when a hint applies, 1 when none applies.
+# No zle, no global state, no $COLUMNS dependence.
+_bang_hints_resolve() {
     emulate -L zsh
     # extendedglob is required for (#b) backreference matching
     setopt extendedglob
@@ -78,22 +83,22 @@ _bang_hints_redraw_hook() {
     local MATCH MBEGIN MEND
 
     # 1. Isolate the current word being typed, including the part after
-    # the cursor (RBUFFER) up to the next separator, so mid-line cursor
+    # the cursor (rbuffer arg) up to the next separator, so mid-line cursor
     # positions describe the full word (e.g. LBUFFER="!!" RBUFFER="foo").
-    local _bh_after="${RBUFFER:-}"
+    local _bh_lbuffer="${1:-}"
+    local _bh_rbuffer="${2:-}"
+    local _bh_after="${_bh_rbuffer}"
     _bh_after="${_bh_after%%[ $'\t'|<>&;]*}"
-    local current_word="${LBUFFER##*[ $'\t'|<>&;]}${_bh_after}"
+    local current_word="${_bh_lbuffer##*[ $'\t'|<>&;]}${_bh_after}"
     
     local bang_idx=${current_word[(i)!]}
     if (( bang_idx == 0 || bang_idx > ${#current_word} )); then
-        _bang_hints_clear
-        return
+        return 1
     fi
     
     local prefix=${current_word[1,bang_idx-1]}
     if [[ "$prefix" == *\\ ]]; then
-        _bang_hints_clear
-        return
+        return 1
     fi
 
     local rem="${current_word[bang_idx,-1]}"
@@ -107,8 +112,9 @@ _bang_hints_redraw_hook() {
         ev_hint="search closed"
         rem="${match[3]}"
     elif [[ "$rem" == (#b)(!\?*) ]]; then
-        _bang_hints_show "$(_bang_hints_draw_box "Matches command containing this text" "Close search with ?")"
-        return
+        builtin print -r -- "Matches command containing this text
+Close search with ?"
+        return 0
     elif [[ "$rem" == (#b)(![\!\$\*#\^])(*) ]]; then
         case "${match[1]}" in
             "!!") ev_hint="!! → previous command" ;;
@@ -122,35 +128,34 @@ _bang_hints_redraw_hook() {
         ev_hint="${match[1]} → ${match[1]#!-} commands ago"
         rem="${match[2]}"
     elif [[ "$rem" == "!"- ]]; then
-        _bang_hints_show "$(_bang_hints_draw_box "Pending: !-n" "Type a digit → n commands ago")"
-        return
+        builtin print -r -- "Pending: !-n
+Type a digit → n commands ago"
+        return 0
     elif [[ "$rem" == !-* ]]; then
         # !- followed by non-digit (e.g. !-n, !-foo) is invalid, not !foo
-        _bang_hints_clear
-        return
+        return 1
     elif [[ "$rem" == (#b)(![0-9]##)(*) ]]; then
         ev_hint="${match[1]} → command #${match[1]#!}"
         rem="${match[2]}"
     elif [[ "$rem" == "!" ]]; then
         # Multiline base menu
-        _bang_hints_show "$(_bang_hints_draw_box \
-            "History expansion" "" \
-            "!!     previous command" \
-            "!$     last argument" \
-            "!^     first argument" \
-            "!*     all arguments" \
-            "!-n    n commands ago" \
-            "!foo   last command: foo" \
-            "!?foo  command containing")"
-        return
+        builtin print -r -- "History expansion
+
+!!     previous command
+!$     last argument
+!^     first argument
+!*     all arguments
+!-n    n commands ago
+!foo   last command: foo
+!?foo  command containing"
+        return 0
     elif [[ "$rem" == (#b)(![a-zA-Z0-9_-]##)(*) ]]; then
         ev_hint="Matches most recent command starting with '${match[1]#!}'"
         rem="${match[2]}"
         is_free_text=1
     else
         # Invalid event designator
-        _bang_hints_clear
-        return
+        return 1
     fi
     
     # ---------------------------------------------------------
@@ -160,16 +165,16 @@ _bang_hints_redraw_hook() {
     while [[ -n "$rem" ]]; do
         # Exact match for trailing colon -> show multiline menu
         if [[ "$rem" == ":" ]]; then
-            _bang_hints_show "$(_bang_hints_draw_box \
-                "Modifiers & Designators" "" \
-                ":0-9   nth argument" \
-                ":^ $ * first/last/all args" \
-                ":p     print without running" \
-                ":h :t  keep head / tail" \
-                ":r :e  remove / keep ext" \
-                ":s/x/y substitute x with y" \
-                ":g     apply globally")"
-            return
+            builtin print -r -- "Modifiers & Designators
+
+:0-9   nth argument
+:^ $ * first/last/all args
+:p     print without running
+:h :t  keep head / tail
+:r :e  remove / keep ext
+:s/x/y substitute x with y
+:g     apply globally"
+            return 0
         fi
         
         # Word designators that omit the colon (e.g., !!*)
@@ -185,8 +190,7 @@ _bang_hints_redraw_hook() {
                 esac
                 continue
             else
-                _bang_hints_clear
-                return
+                return 1
             fi
         fi
         
@@ -197,8 +201,9 @@ _bang_hints_redraw_hook() {
             
             # If nothing follows :s, wait for the delimiter
             if [[ -z "$sub_rem" ]]; then
-                _bang_hints_show "$(_bang_hints_draw_box "Substitute" "Next character sets your delimiter")"
-                return
+                builtin print -r -- "Substitute
+Next character sets your delimiter"
+                return 0
             fi
             
             local delim="${sub_rem[1]}"
@@ -223,18 +228,19 @@ _bang_hints_redraw_hook() {
             
             # Evaluate substitute modifier state
             if (( delim_count == 0 )); then
-                _bang_hints_show "$(_bang_hints_draw_box "Typing pattern to match" "Ends at ${delim}")"
-                return
+                builtin print -r -- "Typing pattern to match
+Ends at ${delim}"
+                return 0
             elif (( delim_count == 1 )); then
-                _bang_hints_show "$(_bang_hints_draw_box "Typing replacement" "Ends at ${delim}")"
-                return
+                builtin print -r -- "Typing replacement
+Ends at ${delim}"
+                return 0
             elif (( delim_count == 2 )); then
                 # Slice off the completed substitute block and continue parsing
                 rem="${rest_sub[cut_idx+1,-1]}"
                 mod_hint="substitution complete"
             else
-                _bang_hints_clear
-                return
+                return 1
             fi
             
         elif [[ "$rem" == (#b)(:[0-9]##-[0-9]##|:[0-9]##\*|:[0-9]##-|:[0-9]##)(*) ]]; then
@@ -268,8 +274,7 @@ _bang_hints_redraw_hook() {
             
         else
             # Dead state (invalid modifier)
-            _bang_hints_clear
-            return
+            return 1
         fi
     done
     
@@ -288,7 +293,20 @@ _bang_hints_redraw_hook() {
             lines=("$ev_hint" "" "[ : for modifiers, Space/Enter to use ]")
         fi
         
-        _bang_hints_show "$(_bang_hints_draw_box "${lines[@]}")"
+        builtin print -r -- "${(F)lines}"
+        return 0
+    fi
+    return 1
+}
+
+# Thin interactive wrapper: resolve inner text, then add the box sugar.
+_bang_hints_redraw_hook() {
+    emulate -L zsh
+    local msg
+    if msg="$(_bang_hints_resolve "${LBUFFER:-}" "${RBUFFER:-}")"; then
+        _bang_hints_show "$(_bang_hints_draw_box "${(@f)msg}")"
+    else
+        _bang_hints_clear
     fi
 }
 
