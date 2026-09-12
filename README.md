@@ -1,8 +1,8 @@
 # bang-hints
 
-Hints for zsh history expansion (`!`). Never executes, only shows.
+Hints for zsh history expansion (`!`)
 
-Requires: zsh >= 5.0, UTF-8 locale, `setopt BANG_HIST` (default on).
+Requires: zsh 5.0 or later
 
 ## Install
 
