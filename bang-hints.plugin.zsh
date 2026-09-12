@@ -108,6 +108,20 @@ _bang_hints_resolve() {
     # ---------------------------------------------------------
     # PART 1: Parse the Base Event Designator (e.g. !!, !foo, !-2)
     # ---------------------------------------------------------
+    # !{..} insulation: unwrap, show same hint as bare inner event.
+    # Literal suffix after } ignored unless it starts a modifier (:/?
+    # for search-close). Unclosed !{partial treated as !partial.
+    if [[ "$rem" == (#b)'!{'([^}]##)'}'(*) ]]; then
+        local _bh_inner="${match[1]}"
+        local _bh_after_brace="${match[2]}"
+        if [[ "$_bh_after_brace" == :* || "$_bh_after_brace" == \?* ]]; then
+            rem="!${_bh_inner}${_bh_after_brace}"
+        else
+            rem="!${_bh_inner}"
+        fi
+    elif [[ "$rem" == (#b)'!{'(*) ]]; then
+        rem="!${match[1]}"
+    fi
     if [[ "$rem" == (#b)(!\?([^\?]#)\?)(*) ]]; then
         ev_hint="search closed"
         rem="${match[3]}"
@@ -116,13 +130,18 @@ _bang_hints_resolve() {
 Close search with ?"
         return 0
     elif [[ "$rem" == (#b)(![\!\$\*#\^])(*) ]]; then
-        case "${match[1]}" in
-            "!!") ev_hint="!! → previous command" ;;
-            "!\$") ev_hint="!\$ → last argument of previous command" ;;
-            "!^") ev_hint="!^ → first argument of previous command" ;;
-            "!*") ev_hint="!* → all arguments of previous command" ;;
-            "!#") ev_hint="!# → current command line typed so far" ;;
-        esac
+        local _bh_ev="${match[1]}"
+        if [[ "$_bh_ev" == '!!' ]]; then
+            ev_hint='!! → previous command'
+        elif [[ "$_bh_ev" == '!$' ]]; then
+            ev_hint='!$ → last argument of previous command'
+        elif [[ "$_bh_ev" == '!^' ]]; then
+            ev_hint='!^ → first argument of previous command'
+        elif [[ "$_bh_ev" == '!*' ]]; then
+            ev_hint='!* → all arguments of previous command'
+        elif [[ "$_bh_ev" == '!#' ]]; then
+            ev_hint='!# → current command line typed so far'
+        fi
         rem="${match[2]}"
     elif [[ "$rem" == (#b)(!-[0-9]##)(*) ]]; then
         ev_hint="${match[1]} → ${match[1]#!-} commands ago"
@@ -137,6 +156,11 @@ Type a digit → n commands ago"
     elif [[ "$rem" == (#b)(![0-9]##)(*) ]]; then
         ev_hint="${match[1]} → command #${match[1]#!}"
         rem="${match[2]}"
+    elif [[ "$rem" == (#b)(!:)(*) ]]; then
+        # Bare !: — same event as preceding ref, else previous command.
+        # Single-expansion hinter: treat as previous event (== !!).
+        ev_hint='!! → previous command'
+        rem=":${match[2]}"
     elif [[ "$rem" == "!" ]]; then
         # Multiline base menu
         builtin print -r -- "History expansion
@@ -147,7 +171,8 @@ Type a digit → n commands ago"
 !*     all arguments
 !-n    n commands ago
 !foo   last command: foo
-!?foo  command containing"
+!?foo  command containing
+!:     word designator (prev event)"
         return 0
     elif [[ "$rem" == (#b)(![a-zA-Z0-9_-]##)(*) ]]; then
         ev_hint="Matches most recent command starting with '${match[1]#!}'"
@@ -183,10 +208,10 @@ Type a digit → n commands ago"
                 local m="${match[1]}"
                 rem="${match[2]}"
                 case "$m" in
-                    \^) mod_hint="first argument selected" ;;
-                    \$) mod_hint="last argument selected" ;;
-                    \*) mod_hint="all arguments selected" ;;
-                    %)  mod_hint="matched word selected" ;;
+                    "^") mod_hint="first argument selected" ;;
+                    "$") mod_hint="last argument selected" ;;
+                    "*") mod_hint="all arguments selected" ;;
+                    "%") mod_hint="matched word selected" ;;
                 esac
                 continue
             else
@@ -259,7 +284,7 @@ Ends at ${delim}"
                 return 1
             fi
             
-        elif [[ "$rem" == (#b)(:[0-9]##-[0-9]##|:[0-9]##\*|:[0-9]##-|:[0-9]##)(*) ]]; then
+        elif [[ "$rem" == (#b)(:[0-9]##-[0-9]##|:[0-9]##-\$|:[0-9]##\*|:[0-9]##-|:[0-9]##)(*) ]]; then
             local m="${match[1]}"
             rem="${match[2]}"
             mod_hint="word designator ${m#:} selected"
@@ -268,13 +293,13 @@ Ends at ${delim}"
             local m="${match[1]}"
             rem="${match[2]}"
             case "$m" in
-                :^) mod_hint="first argument selected" ;;
-                :$) mod_hint="last argument selected" ;;
-                :*) mod_hint="all arguments selected" ;;
-                :%) mod_hint="matched word selected" ;;
+                ":^") mod_hint="first argument selected" ;;
+                ":$") mod_hint="last argument selected" ;;
+                ":%") mod_hint="matched word selected" ;;
+                ":*") mod_hint="all arguments selected" ;;
             esac
             
-        elif [[ "$rem" == (#b)(:[phtreqxc\&g])(*) ]]; then
+        elif [[ "$rem" == (#b)(:[phtreqxcg\&aAluUPQG])(*) ]]; then
             local m="${match[1]}"
             rem="${match[2]}"
             case "$m" in
@@ -318,6 +343,9 @@ Ends at ${delim}"
 # Thin interactive wrapper: resolve inner text, then add the box sugar.
 _bang_hints_redraw_hook() {
     emulate -L zsh
+    # Fast path: no `!` anywhere near the cursor means no history
+    # expansion is possible, so skip the $(...) forks entirely.
+    [[ "${LBUFFER:-}${RBUFFER:-}" == *!* ]] || { _bang_hints_clear; return 0; }
     local msg
     if msg="$(_bang_hints_resolve "${LBUFFER:-}" "${RBUFFER:-}")"; then
         _bang_hints_show "$(_bang_hints_draw_box "${(@f)msg}")"
