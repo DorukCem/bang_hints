@@ -4,6 +4,8 @@ Hints for zsh history expansion (`!`)
 
 Requires: zsh 5.0 or later
 
+![demo](demo.gif)
+
 ## Install
 
 Manual:
