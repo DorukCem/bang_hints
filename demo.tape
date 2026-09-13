@@ -15,6 +15,15 @@ Sleep 1s
 Type "PROMPT='%# '"
 Enter
 Sleep 500ms
+Type "bindkey ' ' magic-space"
+Enter
+Sleep 500ms
+Type "unsetopt HIST_VERIFY"
+Enter
+Sleep 500ms
+Type "history -c"
+Enter
+Sleep 500ms
 Type "clear"
 Enter
 Sleep 500ms
@@ -86,3 +95,35 @@ Sleep 500ms
 # 12. real-world idiom
 Type "sudo !!"
 Sleep 2s
+Ctrl+U
+Sleep 500ms
+
+# 13. live typo-fix: truncated filename, substitution, expansion operator
+Type "touch temp_file"
+Sleep 500ms
+Enter
+Sleep 1s
+Type "mv ./temp_f /tmp/"
+Sleep 500ms
+Enter
+Sleep 1s
+Type "!!"
+Sleep 1.5s
+Type ":"
+Sleep 1.5s
+Type "s"
+Sleep 1s
+Type "/"
+Sleep 1s
+Type@250ms "temp_f"
+Sleep 1s
+Type "/"
+Sleep 1s
+Type@250ms "temp_file"
+Sleep 1s
+Type "/"
+Sleep 1.5s
+Space
+Sleep 1s
+Enter
+Sleep 1.5s
